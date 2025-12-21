@@ -1,0 +1,56 @@
+.subjects-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 360px; /* примерно три карточки */
+  overflow-y: auto;
+}
+
+.subject-card {
+  border: 1px solid #e5e7eb;
+  padding: 16px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.subject-card.selectable {
+  cursor: pointer;
+}
+
+.subject-card.selectable:hover,
+.subject-card.selectable:focus-visible {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  outline: none;
+}
+.subject-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.subject-description {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.subject-meta {
+  display: flex;
+  justify-content: space-between;
+  color: #475569;
+  font-size: 14px;
+}
+
+.deadline {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+
