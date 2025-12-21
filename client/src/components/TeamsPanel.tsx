@@ -17,7 +17,6 @@ interface TeamsPanelProps {
   disabled?: boolean;
   isLoading?: boolean;
   error?: string | null;
-  // now receives the team's join code so UI can open a dedicated URL
   onSelectTeam?: (teamCode: string) => void;
   activeTeamId?: number | null;
 }

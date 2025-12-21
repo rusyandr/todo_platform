@@ -88,7 +88,6 @@ export function TeamDetails({
     setIsSubmitting(true);
     setError(null);
     try {
-      // if no assignees chosen, default to all members
       const assigneeIds = assignees.length ? assignees : team.members.map((m) => m.id);
       await onCreateTask({
         title: title.trim(),
@@ -272,8 +271,13 @@ export function TeamDetails({
                     >
                       📅
                     </button>
-                    <button type="submit" className="icon-btn" title="Добавить">
-                      ➕
+                    <button
+                      type="submit"
+                      className="icon-btn"
+                      title="Добавить"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? '⏳' : '➕'}
                     </button>
                   </div>
                 </div>
