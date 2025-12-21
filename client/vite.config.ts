@@ -2,4 +2,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: '/todo_platform/',
+  build: {
+    outDir: '../docs',
+    emptyOutDir: true,
+  },
 });
