@@ -27,7 +27,7 @@ export class SeedService {
 
     const host = this.usersRepo.create({
       email: 'host@example.com',
-      name: 'Руслан Агафонов',
+      name: 'Имя Фамилия',
       passwordHash,
       role: 'host',
     });
