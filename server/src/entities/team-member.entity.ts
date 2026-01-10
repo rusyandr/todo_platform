@@ -25,7 +25,6 @@ export class TeamMember {
   })
   user: User;
 
-  // Дублируем предмет для удобной проверки "одна команда на предмет"
   @ManyToOne(() => Subject, {
     onDelete: 'CASCADE',
   })

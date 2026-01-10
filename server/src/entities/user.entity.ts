@@ -18,7 +18,6 @@ export class User {
   @Column()
   name: string;
 
-  // захешированный пароль (bcrypt)
   @Column()
   passwordHash: string;
 
