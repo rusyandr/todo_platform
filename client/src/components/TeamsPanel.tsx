@@ -1,19 +1,23 @@
 import './TeamsPanel.css';
+import type { AuthUser } from './AuthBar';
 
 export type TeamCard = {
   id: number;
   name: string;
   subjectTitle: string;
-  deadlineLabel: string;
   membersCount: number;
   adminName: string;
+  adminId: number | null;
   joinCode: string;
+  isAdmin?: boolean;
 };
 
 interface TeamsPanelProps {
   teams: TeamCard[];
   onCreateTeam?: () => void;
   onEnterCode?: () => void;
+  onLeaveTeam?: (teamId: number, isAdmin: boolean) => void;
+  currentUser?: AuthUser | null;
   disabled?: boolean;
   isLoading?: boolean;
   error?: string | null;
@@ -25,6 +29,8 @@ export function TeamsPanel({
   teams,
   onCreateTeam,
   onEnterCode,
+  onLeaveTeam,
+  currentUser,
   disabled,
   isLoading,
   error,
@@ -67,7 +73,38 @@ export function TeamsPanel({
             }
             role={onSelectTeam ? 'button' : undefined}
             tabIndex={onSelectTeam ? 0 : undefined}
+            style={{ position: 'relative' }}
           >
+            {onLeaveTeam && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const isAdmin = team.isAdmin || (team.adminId && currentUser?.id === team.adminId);
+                  const message = isAdmin
+                    ? 'Вы администратор команды. Выход приведет к удалению команды и всех её задач. Продолжить?'
+                    : 'Вы уверены, что хотите выйти из команды?';
+                  if (confirm(message)) {
+                    onLeaveTeam(team.id, isAdmin || false);
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '20px',
+                  color: '#ef4444',
+                  padding: '4px',
+                  lineHeight: '1',
+                }}
+                title="Выйти из команды"
+              >
+                ×
+              </button>
+            )}
             <div className="team-card-header">
               <div>
                 <p className="team-name">{team.name}</p>
@@ -78,7 +115,6 @@ export function TeamsPanel({
             <div className="team-meta">
               <span>{team.membersCount} участников</span>
               <span>Админ: {team.adminName}</span>
-              <span>Дедлайн: {team.deadlineLabel}</span>
             </div>
           </li>
         ))}

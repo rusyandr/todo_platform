@@ -17,7 +17,6 @@ import {
 type ApiTeam = {
   id: number;
   name: string;
-  deadline: string | null;
   joinCode: string;
   admin: { id: number; name: string | null } | null;
   subject: { id: number; title: string };
@@ -40,11 +39,6 @@ type ApiSubject = {
   teams?: ApiTeam[];
 };
 
-const focusItems = [
-  'Проверь статус зависимых задач перед отметкой готовности.',
-  'Назначь ответственных за новые исследования по предмету ИПО.',
-  'Запланируй ревью файлов до пятницы.',
-];
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -73,7 +67,7 @@ export function HomePage() {
   const [isSubjectSubmitting, setIsSubjectSubmitting] = useState(false);
 
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
-  const [teamForm, setTeamForm] = useState({ subjectId: '', name: '', deadline: '' });
+  const [teamForm, setTeamForm] = useState({ subjectId: '', name: '' });
   const [teamModalError, setTeamModalError] = useState<string | null>(null);
   const [isTeamSubmitting, setIsTeamSubmitting] = useState(false);
 
@@ -93,7 +87,7 @@ export function HomePage() {
 
   const clearModals = () => {
     setSubjectForm({ title: '', description: '', deadline: '' });
-    setTeamForm({ subjectId: '', name: '', deadline: '' });
+    setTeamForm({ subjectId: '', name: '' });
     setSubjectModalError(null);
     setTeamModalError(null);
     setTeamJoinCode('');
@@ -178,7 +172,7 @@ export function HomePage() {
     }
 
     api
-      .get<{ userId: number; email: string; role: 'host' | 'student'; name: string }>('/auth/me')
+      .get<{ userId: number; email: string; role: 'teacher' | 'student'; name: string }>('/auth/me')
       .then(async (res) => {
         const user = {
           id: res.data.userId,
@@ -233,6 +227,7 @@ export function HomePage() {
       setTeams([]);
       setSelectedTeamId(null);
       setTeamDetails(null);
+      setNotice(null);
       return;
     }
     loadSubjects();
@@ -248,8 +243,8 @@ export function HomePage() {
       showNotice('Войдите в систему, чтобы создать предмет.', 'error');
       return;
     }
-    if (currentUser.role !== 'host') {
-      showNotice('Предметы может создавать только хост (преподаватель).', 'error');
+    if (currentUser.role !== 'teacher') {
+      showNotice('Предметы может создавать только преподаватель.', 'error');
       return;
     }
     setSubjectModalError(null);
@@ -262,8 +257,8 @@ export function HomePage() {
       setSubjectModalError('Сначала авторизуйся.');
       return;
     }
-    if (currentUser.role !== 'host') {
-      setSubjectModalError('Создавать предметы может только хост.');
+    if (currentUser.role !== 'teacher') {
+      setSubjectModalError('Создавать предметы может только преподаватель.');
       return;
     }
     if (!subjectForm.title.trim()) {
@@ -325,7 +320,6 @@ export function HomePage() {
       await api.post('/teams', {
         subjectId: Number(teamForm.subjectId),
         name: teamForm.name,
-        deadline: teamForm.deadline ? new Date(teamForm.deadline).toISOString() : undefined,
       });
       showNotice('Команда создана. Код приглашения уже доступен.', 'info');
       setIsTeamModalOpen(false);
@@ -423,6 +417,32 @@ export function HomePage() {
     setIsCopyingCode(false);
   };
 
+  const handleLeaveSubject = async (subjectId: number) => {
+    try {
+      await api.post(`/subjects/${subjectId}/leave`);
+      showNotice('Вы вышли из предмета', 'info');
+      await Promise.all([loadSubjects(), loadTeams()]);
+    } catch (error) {
+      console.error(error);
+      showNotice('Не удалось выйти из предмета', 'error');
+    }
+  };
+
+  const handleLeaveTeam = async (teamId: number, isAdmin: boolean) => {
+    try {
+      await api.post(`/teams/${teamId}/leave`);
+      showNotice(isAdmin ? 'Команда удалена' : 'Вы вышли из команды', 'info');
+      await Promise.all([loadTeams(), loadSubjects()]);
+      if (selectedTeamId === teamId) {
+        setSelectedTeamId(null);
+        setTeamDetails(null);
+      }
+    } catch (error) {
+      console.error(error);
+      showNotice('Не удалось выйти из команды', 'error');
+    }
+  };
+
   const handleCopyJoinCode = async () => {
     if (!selectedSubject?.joinCode) {
       return;
@@ -472,7 +492,7 @@ export function HomePage() {
     if (!currentUser) {
       return 'Войди, чтобы видеть предметы, команды и задачи своего потока.';
     }
-    if (currentUser.role === 'host') {
+    if (currentUser.role === 'teacher') {
       return 'Создавай предметы, выдавай команды и отслеживай прогресс студентов.';
     }
     return 'Выбирай предмет, создавай команду и готовься к дедлайнам без хаоса.';
@@ -486,18 +506,35 @@ export function HomePage() {
         <h1>Следи за предметами, командами и задачами в одном окне</h1>
         <p className="hero-subtitle">{heroSubtitle}</p>
         <div className="hero-actions">
-          <button
-            type="button"
-            className="primary"
-            onClick={
-              currentUser && currentUser.role === 'host'
-                ? handleOpenSubjectModal
-                : handleOpenSubjectJoinModal
-            }
-            disabled={!currentUser}
-          >
-            {currentUser?.role === 'host' ? 'Создать предмет' : 'Ввести код предмета'}
-          </button>
+            {currentUser?.role === 'teacher' ? (
+            <>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleOpenSubjectModal}
+                disabled={!currentUser}
+              >
+                Создать предмет
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={handleOpenSubjectJoinModal}
+                disabled={!currentUser}
+              >
+                Ввести код предмета
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="primary"
+              onClick={handleOpenSubjectJoinModal}
+              disabled={!currentUser}
+            >
+              Ввести код предмета
+            </button>
+          )}
           <button type="button" className="ghost" onClick={handleOpenTeamModal} disabled={!currentUser}>
             Создать команду
           </button>
@@ -525,9 +562,10 @@ export function HomePage() {
             onAddSubject={handleOpenSubjectModal}
             onEnterCode={handleOpenSubjectJoinModal}
             onSelectSubject={handleSelectSubject}
-            canCreate={Boolean(currentUser && currentUser.role === 'host')}
-            canJoin={Boolean(currentUser && currentUser.role !== 'host')}
-            actionDisabled={!currentUser || currentUser.role !== 'host'}
+            onLeaveSubject={handleLeaveSubject}
+            canCreate={Boolean(currentUser && currentUser.role === 'teacher')}
+            canJoin={Boolean(currentUser)}
+            actionDisabled={!currentUser}
             isLoading={subjectsLoading}
             error={subjectsError}
           />
@@ -535,6 +573,8 @@ export function HomePage() {
             teams={teams}
             onCreateTeam={handleOpenTeamModal}
             onEnterCode={handleOpenTeamJoinModal}
+            onLeaveTeam={handleLeaveTeam}
+            currentUser={currentUser}
             disabled={!currentUser}
             isLoading={teamsLoading}
             error={teamsError}
@@ -550,25 +590,10 @@ export function HomePage() {
                 <p className="eyebrow">Задачи платформы</p>
                 <h2>Активные задачи</h2>
               </div>
-              <button type="button" className="ghost small" disabled>
-                Добавить задачу
-              </button>
             </div>
 
-            <Tasks />
+            <Tasks currentUser={currentUser} />
           </div>
-
-          <aside className="focus-card">
-            <h3>Фокус недели</h3>
-            <ul>
-              {focusItems.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <button type="button" className="link-button" onClick={handleOpenTeamModal}>
-              Открыть вкладку команды →
-            </button>
-          </aside>
         </section>
       </main>
 
@@ -583,6 +608,11 @@ export function HomePage() {
               onCreateTask={handleCreateTeamTask}
               onToggleTask={handleToggleTeamTask}
               onClose={handleCloseTeamDetails}
+              onTeamUpdate={async () => {
+                if (selectedTeamId) {
+                  await fetchTeamDetails(selectedTeamId);
+                }
+              }}
             />
           )}
         </div>
@@ -678,16 +708,6 @@ export function HomePage() {
                     setTeamForm((prev) => ({ ...prev, name: event.target.value }))
                   }
                   required
-                />
-              </label>
-              <label>
-                Дедлайн (необязательно)
-                <input
-                  type="date"
-                  value={teamForm.deadline}
-                  onChange={(event) =>
-                    setTeamForm((prev) => ({ ...prev, deadline: event.target.value }))
-                  }
                 />
               </label>
               {teamModalError && <p className="form-error">{teamModalError}</p>}
@@ -838,17 +858,7 @@ function formatSubjectDeadline(subject: ApiSubject): string | undefined {
   if (subject.deadline) {
     return new Date(subject.deadline).toLocaleDateString('ru-RU');
   }
-
-  const sorted = (subject.teams ?? [])
-    .filter((team) => Boolean(team.deadline))
-    .map((team) => new Date(team.deadline as string))
-    .sort((a, b) => a.getTime() - b.getTime());
-
-  if (!sorted.length) {
-    return undefined;
-  }
-
-  return sorted[0].toLocaleDateString('ru-RU');
+  return undefined;
 }
 
 function mapTeams(items: ApiTeamMembership[]): TeamCard[] {
@@ -856,11 +866,10 @@ function mapTeams(items: ApiTeamMembership[]): TeamCard[] {
     id: membership.team.id,
     name: membership.team.name,
     subjectTitle: membership.team.subject.title,
-    deadlineLabel: membership.team.deadline
-      ? new Date(membership.team.deadline).toLocaleDateString('ru-RU')
-      : 'Без дедлайна',
     membersCount: membership.team.members?.length ?? 1,
     adminName: membership.team.admin?.name ?? 'Без админа',
+    adminId: membership.team.admin?.id ?? null,
     joinCode: membership.team.joinCode,
+    isAdmin: membership.role === 'admin',
   }));
 }

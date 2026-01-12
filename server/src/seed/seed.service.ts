@@ -15,7 +15,7 @@ export class SeedService {
   ) {}
 
   async seedIfEmpty() {
-    this.logger.log('Clearing existing data and seeding base host user...');
+    this.logger.log('Clearing existing data and seeding base teacher user...');
     await this.seed();
     this.logger.log('Seeding completed');
   }
@@ -25,14 +25,14 @@ export class SeedService {
 
     const passwordHash: string = await hash('password123', 10);
 
-    const host = this.usersRepo.create({
-      email: 'host@example.com',
+    const teacher = this.usersRepo.create({
+      email: 'teacher@example.com',
       name: 'Имя Фамилия',
       passwordHash,
-      role: 'host',
+      role: 'teacher',
     });
 
-    await this.usersRepo.save(host);
+    await this.usersRepo.save(teacher);
   }
 
   private async clearDatabase() {

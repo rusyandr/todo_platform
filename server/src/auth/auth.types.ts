@@ -1,4 +1,4 @@
-export type UserRole = 'host' | 'student';
+export type UserRole = 'teacher' | 'student';
 
 export interface AuthenticatedUser {
   userId: number;

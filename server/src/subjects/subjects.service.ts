@@ -1,5 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -38,25 +40,41 @@ export class SubjectsService {
       .getMany();
   }
 
-  async create(dto: CreateSubjectDto, hostId: number): Promise<Subject> {
-    const host = await this.usersService.findById(hostId);
-    if (!host) {
+  async create(dto: CreateSubjectDto, teacherId: number): Promise<Subject> {
+    const teacher = await this.usersService.findById(teacherId);
+    if (!teacher) {
       throw new NotFoundException('Пользователь не найден');
+    }
+
+    let deadline: Date | null = null;
+    if (dto.deadline) {
+      const deadlineDate = new Date(dto.deadline);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const deadlineDay = new Date(deadlineDate);
+      deadlineDay.setHours(0, 0, 0, 0);
+
+      if (deadlineDay < today) {
+        throw new BadRequestException('Дедлайн не может быть раньше текущей даты');
+      }
+
+      deadlineDate.setHours(23, 59, 0, 0);
+      deadline = deadlineDate;
     }
 
     const subject = this.subjectsRepository.create({
       title: dto.title,
       description: dto.description ?? null,
-      deadline: dto.deadline ? new Date(dto.deadline) : null,
+      deadline,
       joinCode: await this.generateUniqueJoinCode(),
-      createdBy: host,
+      createdBy: teacher,
     });
 
     const saved = await this.subjectsRepository.save(subject);
 
     const participant = this.participantsRepository.create({
       subject: saved,
-      user: host,
+      user: teacher,
     });
 
     await this.participantsRepository.save(participant);
@@ -90,6 +108,33 @@ export class SubjectsService {
     await this.participantsRepository.save(participant);
 
     return subject;
+  }
+
+  async leave(subjectId: number, userId: number) {
+    const subject = await this.subjectsRepository.findOne({
+      where: { id: subjectId },
+      relations: ['createdBy'],
+    });
+
+    if (!subject) {
+      throw new NotFoundException('Предмет не найден');
+    }
+
+    const participant = await this.participantsRepository.findOne({
+      where: { subject: { id: subjectId }, user: { id: userId } },
+    });
+
+    if (!participant) {
+      throw new NotFoundException('Вы не состоите в этом предмете');
+    }
+
+    if (subject.createdBy?.id === userId) {
+      await this.subjectsRepository.remove(subject);
+      return { success: true, deleted: true };
+    }
+
+    await this.participantsRepository.remove(participant);
+    return { success: true, deleted: false };
   }
 
   private async generateUniqueJoinCode(length = 6): Promise<string> {

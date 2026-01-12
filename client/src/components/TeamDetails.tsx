@@ -1,5 +1,7 @@
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import type { TeamDetailsResponse } from '../api/teams';
+import { addTaskComment, uploadTaskFile, removeTeamMember, leaveTeam } from '../api/teams';
+import { api } from '../api/axios';
 import type { AuthUser } from './AuthBar';
 import './TeamDetails.css';
 
@@ -17,6 +19,7 @@ interface TeamDetailsProps {
   }): Promise<void>;
   onToggleTask(taskId: number, isCompleted: boolean): Promise<void>;
   onClose(): void;
+  onTeamUpdate?(): Promise<void>;
 }
 
 export function TeamDetails({
@@ -24,13 +27,12 @@ export function TeamDetails({
   currentUser,
   onCreateTask,
   onToggleTask,
-  onClose,
+  onClose: _onClose,
+  onTeamUpdate,
 }: TeamDetailsProps) {
   const [selectedTask, setSelectedTask] = useState<
     TeamDetailsResponse['tasks'][number] | null
   >(null);
-  const [comments, setComments] = useState<Record<number, { id: string; text: string; author: string; createdAt: string }[]>>({});
-  const [files, setFiles] = useState<Record<number, File[]>>({});
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
@@ -135,6 +137,35 @@ export function TeamDetails({
     }
   };
 
+  const handleRemoveMember = async (memberId: number) => {
+    if (!team.isAdmin) return;
+    if (!confirm(`Вы уверены, что хотите удалить этого участника из команды?`)) return;
+    try {
+      await removeTeamMember(team.id, memberId);
+      if (onTeamUpdate) await onTeamUpdate();
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось удалить участника');
+    }
+  };
+
+  const handleLeaveTeam = async () => {
+    const message = team.isAdmin
+      ? 'Вы администратор команды. Выход приведет к удалению команды и всех её задач. Продолжить?'
+      : 'Вы уверены, что хотите выйти из команды?';
+    if (!confirm(message)) return;
+    try {
+      await leaveTeam(team.id);
+      if (onTeamUpdate) {
+        await onTeamUpdate();
+      }
+      window.location.href = '/#/';
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось выйти из команды');
+    }
+  };
+
   const canManageTasks = team.isAdmin;
 
   const canToggleTask = (taskId: number) => {
@@ -147,6 +178,9 @@ export function TeamDetails({
     if (!canToggleTask(taskId)) return;
     try {
       await onToggleTask(taskId, isCompleted);
+      if (onTeamUpdate) {
+        await onTeamUpdate();
+      }
     } catch (err) {
       console.error(err);
       setError('Не удалось обновить задачу');
@@ -158,21 +192,49 @@ export function TeamDetails({
     setSelectedTask(t);
   };
 
-  const handleAddComment = (taskId: number, text: string) => {
+  useEffect(() => {
+    if (selectedTask) {
+      const updated = team.tasks.find((t) => t.id === selectedTask.id);
+      if (updated) {
+        setSelectedTask(updated);
+      }
+    }
+  }, [team.tasks]);
+
+  const handleAddComment = async (taskId: number, text: string) => {
     if (!text.trim()) return;
-    const newComment = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      text: text.trim(),
-      author: currentUser.name ?? 'Anonymous',
-      createdAt: new Date().toISOString(),
-    };
-    setComments((prev) => ({ ...(prev || {}), [taskId]: [...(prev[taskId] || []), newComment] }));
+    try {
+      await addTaskComment(team.id, taskId, text.trim());
+      if (onTeamUpdate) {
+        await onTeamUpdate();
+        const updatedTask = team.tasks.find((t) => t.id === taskId);
+        if (updatedTask) {
+          setSelectedTask(updatedTask);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось добавить комментарий');
+    }
   };
 
-  const handleAttachFiles = (taskId: number, fileList: FileList | null) => {
-    if (!fileList) return;
-    const arr = Array.from(fileList);
-    setFiles((prev) => ({ ...(prev || {}), [taskId]: [...(prev[taskId] || []), ...arr] }));
+  const handleAttachFiles = async (taskId: number, fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    try {
+      for (const file of Array.from(fileList)) {
+        await uploadTaskFile(team.id, taskId, file);
+      }
+      if (onTeamUpdate) {
+        await onTeamUpdate();
+        const updatedTask = team.tasks.find((t) => t.id === taskId);
+        if (updatedTask) {
+          setSelectedTask(updatedTask);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось загрузить файл');
+    }
   };
 
   return (
@@ -191,23 +253,50 @@ export function TeamDetails({
           <button type="button" className="ghost small" onClick={handleCopyCode}>
             Код: {team.joinCode}
           </button>
-          <button type="button" className="ghost small" onClick={onClose}>
-            Закрыть
-          </button>
         </div>
       </header>
       {copyStatus && <p className="copy-status">{copyStatus}</p>}
 
       <div className="team-details__grid">
         <aside className="team-details__members">
-          <h3>Участники</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ margin: 0 }}>Участники</h3>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={handleLeaveTeam}
+              style={{ fontSize: '12px' }}
+            >
+              Выйти из команды
+            </button>
+          </div>
           <ul>
             {team.members.map((member) => (
-              <li key={member.id}>
-                <span>{member.name}</span>
+              <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ flex: 1 }}>{member.name}</span>
                 <span className={`role-badge ${member.role}`}>
                   {member.role === 'admin' ? 'Админ' : 'Участник'}
                 </span>
+                {team.isAdmin && member.id !== currentUser.id && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveMember(member.id);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '18px',
+                      color: '#ef4444',
+                      padding: '0 4px',
+                    }}
+                    title="Удалить участника"
+                  >
+                    ×
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -349,9 +438,13 @@ export function TeamDetails({
                   <div>
                     <p className="task-title">
                       {task.title}
-                      <span className={`badge ${task.isAvailable ? 'success' : 'pending'}`}>
-                        {task.isAvailable ? 'Доступна' : 'Ждет зависимостей'}
-                      </span>
+                      {task.isCompleted ? (
+                        <span className="badge success">Завершена</span>
+                      ) : (
+                        <span className={`badge ${task.isAvailable ? 'success' : 'pending'}`}>
+                          {task.isAvailable ? 'Доступна' : 'Недоступна'}
+                        </span>
+                      )}
                     </p>
                     {task.description && <p className="task-description">{task.description}</p>}
                     {task.deadline && (
@@ -411,20 +504,28 @@ export function TeamDetails({
                 <section>
                   <h4>Комментарии</h4>
                   <ul className="comments-list">
-                    {(comments[selectedTask.id] || []).map((c) => (
+                    {(selectedTask.comments || []).map((c) => (
                       <li key={c.id}>
-                        <strong>{c.author}</strong> <span className="muted">{new Date(c.createdAt).toLocaleString()}</span>
+                        <strong>{c.author.name}</strong>{' '}
+                        <span className="muted">
+                          {new Date(c.createdAt).toLocaleString()}
+                        </span>
                         <p>{c.text}</p>
                       </li>
                     ))}
-                    {!comments[selectedTask.id] && <li className="muted">Пока нет комментариев</li>}
+                    {(!selectedTask.comments || selectedTask.comments.length === 0) && (
+                      <li className="muted">Пока нет комментариев</li>
+                    )}
                   </ul>
                   <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
                       const el = (e.target as HTMLFormElement).elements.namedItem('comment') as HTMLInputElement;
-                      handleAddComment(selectedTask.id, el.value);
-                      el.value = '';
+                      const text = el.value;
+                      if (text.trim()) {
+                        await handleAddComment(selectedTask.id, text);
+                        el.value = '';
+                      }
                     }}
                   >
                     <label>
@@ -445,17 +546,41 @@ export function TeamDetails({
                 <section>
                   <h4>Файлы</h4>
                   <ul>
-                    {(files[selectedTask.id] || []).map((f, i) => (
-                      <li key={`${f.name}-${i}`}>{f.name} · {(f.size / 1024).toFixed(1)}KB</li>
+                    {(selectedTask.files || []).map((f) => (
+                      <li key={f.id}>
+                        <a
+                          href={`${api.defaults.baseURL}${f.fileUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={f.fileName}
+                        >
+                          {f.fileName}
+                        </a>
+                        {f.fileSize && (
+                          <span className="muted">
+                            {' '}
+                            · {(f.fileSize / 1024).toFixed(1)}KB
+                          </span>
+                        )}
+                        {f.uploadedBy?.name && (
+                          <span className="muted"> · {f.uploadedBy.name}</span>
+                        )}
+                      </li>
                     ))}
-                    {!files[selectedTask.id] && <li className="muted">Нет загруженных файлов</li>}
+                    {(!selectedTask.files || selectedTask.files.length === 0) && (
+                      <li className="muted">Нет загруженных файлов</li>
+                    )}
                   </ul>
                   <label className="file-input">
-                    Прикрепить файл
+                    Прикрепить файл (макс. 50MB)
                     <input
                       type="file"
                       multiple
-                      onChange={(e) => handleAttachFiles(selectedTask.id, e.target.files)}
+                      accept=".txt,.pdf,.png,.jpg,.jpeg,.mp3,.mp4,.xlsx,.pptx"
+                      onChange={(e) => {
+                        handleAttachFiles(selectedTask.id, e.target.files);
+                        e.target.value = '';
+                      }}
                     />
                   </label>
                 </section>

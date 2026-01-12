@@ -17,7 +17,6 @@ type ApiTeamMembership = {
   team: {
     id: number;
     name: string;
-    deadline: string | null;
     joinCode: string;
     admin: { id: number; name: string | null } | null;
     subject: { id: number; title: string };
@@ -29,7 +28,6 @@ type TeamCard = {
   id: number;
   name: string;
   subjectTitle: string;
-  deadlineLabel: string;
   membersCount: number;
   adminName: string;
   joinCode: string;
@@ -92,7 +90,7 @@ export function TeamPage() {
     setAuthLoaded(false);
 
     api
-      .get<{ userId: number; email: string; role: 'host' | 'student'; name: string }>('/auth/me')
+      .get<{ userId: number; email: string; role: 'teacher' | 'student'; name: string }>('/auth/me')
       .then(async (res) => {
         const user = {
           id: res.data.userId,
@@ -246,6 +244,15 @@ export function TeamPage() {
                 onCreateTask={handleCreateTeamTask}
                 onToggleTask={handleToggleTeamTask}
                 onClose={() => {}}
+                onTeamUpdate={async () => {
+                  await loadTeams();
+                  const found = teams.find((t) => t.joinCode === code);
+                  if (found) {
+                    await fetchTeamDetails(found.id);
+                  } else {
+                    navigate('/');
+                  }
+                }}
               />
             )}
           </div>
@@ -272,9 +279,6 @@ function mapTeams(items: ApiTeamMembership[]): TeamCard[] {
     id: membership.team.id,
     name: membership.team.name,
     subjectTitle: membership.team.subject.title,
-    deadlineLabel: membership.team.deadline
-      ? new Date(membership.team.deadline).toLocaleDateString('ru-RU')
-      : 'Без дедлайна',
     membersCount: membership.team.members?.length ?? 1,
     adminName: membership.team.admin?.name ?? 'Без админа',
     joinCode: membership.team.joinCode,

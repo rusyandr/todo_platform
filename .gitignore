@@ -7,3 +7,4 @@ server/node_modules/
 server/dist/
 server/.env
 server/npm-debug.log*
+server/uploads/

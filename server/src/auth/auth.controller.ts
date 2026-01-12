@@ -8,6 +8,7 @@ class RegisterDto {
   firstName: string;
   lastName: string;
   password: string;
+  role?: 'teacher' | 'student';
 }
 
 class LoginDto {
@@ -26,6 +27,7 @@ export class AuthController {
       dto.firstName,
       dto.lastName,
       dto.password,
+      dto.role || 'student',
     );
   }
 

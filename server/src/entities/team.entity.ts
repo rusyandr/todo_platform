@@ -32,9 +32,6 @@ export class Team {
   @Column({ unique: true })
   joinCode: string;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  deadline: Date | null;
-
   @OneToMany(() => TeamMember, (member) => member.team)
   members: TeamMember[];
 

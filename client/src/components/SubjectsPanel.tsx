@@ -15,6 +15,7 @@ interface SubjectsPanelProps {
   onAddSubject?: () => void;
   onEnterCode?: () => void;
   onSelectSubject?: (subject: SubjectCard) => void;
+  onLeaveSubject?: (subjectId: number) => void;
   canCreate?: boolean;
   canJoin?: boolean;
   actionDisabled?: boolean;
@@ -27,6 +28,7 @@ export function SubjectsPanel({
   onAddSubject,
   onEnterCode,
   onSelectSubject,
+  onLeaveSubject,
   canCreate,
   canJoin,
   actionDisabled,
@@ -69,7 +71,37 @@ export function SubjectsPanel({
             }
             role={onSelectSubject ? 'button' : undefined}
             tabIndex={onSelectSubject ? 0 : undefined}
+            style={{ position: 'relative' }}
           >
+            {onLeaveSubject && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const message = subject.authorName && subject.authorName !== '—'
+                    ? 'Вы создатель этого предмета. Выход приведет к удалению предмета и всех команд. Продолжить?'
+                    : 'Вы уверены, что хотите выйти из предмета?';
+                  if (confirm(message)) {
+                    onLeaveSubject(subject.id);
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '20px',
+                  color: '#ef4444',
+                  padding: '4px',
+                  lineHeight: '1',
+                }}
+                title="Выйти из предмета"
+              >
+                ×
+              </button>
+            )}
             <div>
               <p className="subject-title">{subject.title}</p>
               <p className="subject-description">{subject.description}</p>

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -18,6 +19,8 @@ import { SubjectParticipant } from '../entities/subject-participant.entity';
 import { Task } from '../entities/task.entity';
 import { TaskAssignee } from '../entities/task-assignee.entity';
 import { TaskDependency } from '../entities/task-dependency.entity';
+import { TaskComment } from '../entities/task-comment.entity';
+import { TaskFile } from '../entities/task-file.entity';
 
 @Injectable()
 export class TeamsService {
@@ -38,6 +41,10 @@ export class TeamsService {
     private readonly taskAssigneesRepository: Repository<TaskAssignee>,
     @InjectRepository(TaskDependency)
     private readonly taskDependenciesRepository: Repository<TaskDependency>,
+    @InjectRepository(TaskComment)
+    private readonly taskCommentsRepository: Repository<TaskComment>,
+    @InjectRepository(TaskFile)
+    private readonly taskFilesRepository: Repository<TaskFile>,
   ) {}
 
   async create(userId: number, dto: CreateTeamDto): Promise<Team> {
@@ -74,7 +81,6 @@ export class TeamsService {
       subject,
       admin: user,
       joinCode: await this.generateUniqueJoinCode(),
-      deadline: dto.deadline ? new Date(dto.deadline) : null,
     });
 
     await this.teamsRepository.save(team);
@@ -97,7 +103,6 @@ export class TeamsService {
       relations: ['team', 'team.subject', 'team.admin', 'team.members'],
       order: {
         team: {
-          deadline: 'ASC',
           id: 'ASC',
         },
       },
@@ -153,6 +158,50 @@ export class TeamsService {
     return team;
   }
 
+  async leave(teamId: number, userId: number) {
+    const team = await this.teamsRepository.findOne({
+      where: { id: teamId },
+      relations: ['admin'],
+    });
+
+    if (!team) {
+      throw new NotFoundException('Команда не найдена');
+    }
+
+    const membership = await this.getMembership(teamId, userId);
+
+    if (team.admin?.id === userId) {
+      await this.teamsRepository.remove(team);
+      return { success: true, deleted: true };
+    }
+
+    await this.teamMembersRepository.remove(membership);
+    return { success: true, deleted: false };
+  }
+
+  async removeMember(teamId: number, memberUserId: number, adminUserId: number) {
+    const adminMembership = await this.getMembership(teamId, adminUserId);
+
+    if (adminMembership.role !== 'admin') {
+      throw new ForbiddenException('Только администратор может удалять участников');
+    }
+
+    if (memberUserId === adminUserId) {
+      throw new ForbiddenException('Администратор не может удалить самого себя');
+    }
+
+    const memberMembership = await this.teamMembersRepository.findOne({
+      where: { team: { id: teamId }, user: { id: memberUserId } },
+    });
+
+    if (!memberMembership) {
+      throw new NotFoundException('Участник не найден в команде');
+    }
+
+    await this.teamMembersRepository.remove(memberMembership);
+    return { success: true };
+  }
+
   async getTeamDetails(teamId: number, userId: number) {
     const membership = await this.getMembership(teamId, userId);
 
@@ -168,10 +217,20 @@ export class TeamsService {
         'tasks.dependencies',
         'tasks.dependencies.dependsOn',
         'tasks.completedBy',
+        'tasks.comments',
+        'tasks.comments.author',
+        'tasks.files',
+        'tasks.files.uploadedBy',
       ],
       order: {
         tasks: {
           createdAt: 'ASC',
+          comments: {
+            createdAt: 'ASC',
+          },
+          files: {
+            createdAt: 'ASC',
+          },
         },
       },
     });
@@ -184,7 +243,6 @@ export class TeamsService {
       id: team.id,
       name: team.name,
       joinCode: team.joinCode,
-      deadline: team.deadline,
       subject: team.subject,
       isAdmin: membership.role === 'admin',
       members: team.members.map((member) => ({
@@ -208,6 +266,26 @@ export class TeamsService {
           id: dep.dependsOn.id,
           title: dep.dependsOn.title,
           isCompleted: dep.dependsOn.isCompleted,
+        })),
+        comments: task.comments.map((comment) => ({
+          id: comment.id,
+          text: comment.text,
+          author: {
+            id: comment.author.id,
+            name: comment.author.name,
+          },
+          createdAt: comment.createdAt,
+        })),
+        files: task.files.map((file) => ({
+          id: file.id,
+          fileName: file.fileName,
+          fileUrl: file.fileUrl,
+          fileSize: file.fileSize,
+          uploadedBy: {
+            id: file.uploadedBy?.id ?? null,
+            name: file.uploadedBy?.name ?? null,
+          },
+          createdAt: file.createdAt,
         })),
       })),
     };
@@ -248,11 +326,38 @@ export class TeamsService {
       throw new NotFoundException('Некоторые зависимости не найдены');
     }
 
+    let deadline: Date | null = null;
+    if (dto.deadline) {
+      const deadlineDate = new Date(dto.deadline);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const deadlineDay = new Date(deadlineDate);
+      deadlineDay.setHours(0, 0, 0, 0);
+
+      if (deadlineDay < today) {
+        throw new BadRequestException('Дедлайн задачи не может быть раньше сегодняшнего дня');
+      }
+
+      const subject = await this.subjectsRepository.findOne({
+        where: { id: membership.team.subject.id },
+      });
+
+      if (subject?.deadline) {
+        const subjectDeadline = new Date(subject.deadline);
+        subjectDeadline.setHours(23, 59, 0, 0);
+        if (deadlineDate > subjectDeadline) {
+          throw new BadRequestException('Дедлайн задачи не может быть позже дедлайна предмета');
+        }
+      }
+
+      deadline = deadlineDate;
+    }
+
     const task = this.tasksRepository.create({
       team: membership.team,
       title: dto.title,
       description: dto.description ?? null,
-      deadline: dto.deadline ? new Date(dto.deadline) : null,
+      deadline,
       createdBy: membership.user,
     });
 
@@ -393,5 +498,95 @@ export class TeamsService {
         'completedBy',
       ],
     });
+  }
+
+  async addTaskComment(
+    teamId: number,
+    taskId: number,
+    userId: number,
+    text: string,
+  ) {
+    await this.getMembership(teamId, userId);
+
+    const task = await this.tasksRepository.findOne({
+      where: { id: taskId, team: { id: teamId } },
+    });
+
+    if (!task) {
+      throw new NotFoundException('Задача не найдена');
+    }
+
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    const comment = this.taskCommentsRepository.create({
+      task,
+      author: user,
+      text,
+    });
+
+    await this.taskCommentsRepository.save(comment);
+    return this.getTaskWithRelations(taskId);
+  }
+
+  async uploadTaskFile(
+    teamId: number,
+    taskId: number,
+    userId: number,
+    fileName: string,
+    fileUrl: string,
+    fileSize: number,
+  ) {
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
+    const ALLOWED_EXTENSIONS = [
+      'txt',
+      'pdf',
+      'png',
+      'jpg',
+      'jpeg',
+      'mp3',
+      'mp4',
+      'xlsx',
+      'pptx',
+    ];
+
+    if (fileSize > MAX_FILE_SIZE) {
+      throw new ConflictException('Файл слишком большой (максимум 50MB)');
+    }
+
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
+      throw new ConflictException(
+        `Недопустимый тип файла. Разрешены: ${ALLOWED_EXTENSIONS.join(', ')}`,
+      );
+    }
+
+    await this.getMembership(teamId, userId);
+
+    const task = await this.tasksRepository.findOne({
+      where: { id: taskId, team: { id: teamId } },
+    });
+
+    if (!task) {
+      throw new NotFoundException('Задача не найдена');
+    }
+
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    const file = this.taskFilesRepository.create({
+      task,
+      uploadedBy: user,
+      fileName,
+      fileUrl,
+      fileSize,
+    });
+
+    await this.taskFilesRepository.save(file);
+    return this.getTaskWithRelations(taskId);
   }
 }

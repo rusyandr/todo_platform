@@ -22,7 +22,7 @@ export class User {
   passwordHash: string;
 
   @Column({ default: 'student' })
-  role: 'host' | 'student';
+  role: 'teacher' | 'student';
 
   @OneToMany(() => Subject, (subject) => subject.createdBy)
   createdSubjects: Subject[];

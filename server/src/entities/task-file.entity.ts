@@ -30,6 +30,9 @@ export class TaskFile {
   @Column()
   fileName: string;
 
+  @Column({ type: 'bigint', nullable: true })
+  fileSize: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

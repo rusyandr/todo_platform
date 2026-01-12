@@ -4,7 +4,6 @@ export interface TeamDetailsResponse {
   id: number;
   name: string;
   joinCode: string;
-  deadline?: string | null;
   subject: {
     id: number;
     title: string;
@@ -22,6 +21,20 @@ export interface TeamDetailsResponse {
     completedById: number | null;
     assignees: Array<{ id: number; name: string }>;
     dependencies: Array<{ id: number; title: string; isCompleted: boolean }>;
+    comments: Array<{
+      id: number;
+      text: string;
+      author: { id: number; name: string };
+      createdAt: string;
+    }>;
+    files: Array<{
+      id: number;
+      fileName: string;
+      fileUrl: string;
+      fileSize: number | null;
+      uploadedBy: { id: number | null; name: string | null };
+      createdAt: string;
+    }>;
   }>;
 }
 
@@ -49,3 +62,28 @@ export function updateTaskStatus(
   return api.patch(`/teams/${teamId}/tasks/${taskId}`, { isCompleted });
 }
 
+export function addTaskComment(teamId: number, taskId: number, text: string) {
+  return api.post(`/teams/${teamId}/tasks/${taskId}/comments`, { text });
+}
+
+export function uploadTaskFile(teamId: number, taskId: number, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/teams/${teamId}/tasks/${taskId}/files`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+}
+
+export function downloadTaskFile(fileUrl: string) {
+  return api.get(fileUrl, { responseType: 'blob' });
+}
+
+export function removeTeamMember(teamId: number, userId: number) {
+  return api.post(`/teams/${teamId}/members/${userId}/remove`);
+}
+
+export function leaveTeam(teamId: number) {
+  return api.post(`/teams/${teamId}/leave`);
+}

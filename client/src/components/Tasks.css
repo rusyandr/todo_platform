@@ -70,4 +70,52 @@
   color: #ef4444;
 }
 
+.tasks-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tasks-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tasks-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tasks-filter-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.tasks-filter-group select {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.tasks-list {
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.task-subject {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
 

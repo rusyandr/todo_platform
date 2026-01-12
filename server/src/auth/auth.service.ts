@@ -11,7 +11,7 @@ import { User } from '../entities/user.entity';
 export interface AuthPayload {
   sub: number;
   email: string;
-  role: 'host' | 'student';
+  role: 'teacher' | 'student';
   name: string;
 }
 
@@ -46,6 +46,7 @@ export class AuthService {
     firstName: string,
     lastName: string,
     password: string,
+    role: 'teacher' | 'student' = 'student',
   ) {
     const existing = await this.usersService.findByEmail(email);
     if (existing) {
@@ -57,6 +58,7 @@ export class AuthService {
       email,
       name: `${firstName.trim()} ${lastName.trim()}`.trim(),
       passwordHash,
+      role,
     });
 
     return this.buildResponse(user);

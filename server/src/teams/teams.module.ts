@@ -8,6 +8,8 @@ import { SubjectParticipant } from '../entities/subject-participant.entity';
 import { Task } from '../entities/task.entity';
 import { TaskAssignee } from '../entities/task-assignee.entity';
 import { TaskDependency } from '../entities/task-dependency.entity';
+import { TaskComment } from '../entities/task-comment.entity';
+import { TaskFile } from '../entities/task-file.entity';
 import { TeamsService } from './teams.service';
 import { TeamsController } from './teams.controller';
 
@@ -22,6 +24,8 @@ import { TeamsController } from './teams.controller';
       Task,
       TaskAssignee,
       TaskDependency,
+      TaskComment,
+      TaskFile,
     ]),
   ],
   controllers: [TeamsController],

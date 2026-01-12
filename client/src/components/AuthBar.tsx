@@ -8,7 +8,7 @@ export interface AuthUser {
   id: number;
   email: string;
   name: string;
-  role: 'host' | 'student';
+  role: 'teacher' | 'student';
 }
 
 interface AuthResponse {
@@ -36,6 +36,7 @@ export function AuthBar({ currentUser, onAuthChange }: AuthBarProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'teacher' | 'student'>('student');
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export function AuthBar({ currentUser, onAuthChange }: AuthBarProps) {
     setFirstName('');
     setLastName('');
     setPassword('');
+    setRole('student');
     setError(null);
   };
 
@@ -63,7 +65,7 @@ export function AuthBar({ currentUser, onAuthChange }: AuthBarProps) {
       const payload =
         mode === 'login'
           ? { email, password }
-          : { email, firstName, lastName, password };
+          : { email, firstName, lastName, password, role };
 
       const { data } = await api.post<AuthResponse>(endpoint, payload);
       localStorage.setItem('accessToken', data.accessToken);
@@ -159,6 +161,17 @@ export function AuthBar({ currentUser, onAuthChange }: AuthBarProps) {
                       onChange={(e) => setLastName(e.target.value)}
                       required
                     />
+                  </label>
+                  <label>
+                    Роль
+                    <select
+                      value={role}
+                      onChange={(e) => setRole(e.target.value as 'teacher' | 'student')}
+                      required
+                    >
+                      <option value="student">Студент</option>
+                      <option value="teacher">Преподаватель</option>
+                    </select>
                   </label>
                 </>
               )}

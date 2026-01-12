@@ -3,6 +3,8 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Param,
+  ParseIntPipe,
   Post,
   Req,
   UseGuards,
@@ -28,9 +30,9 @@ export class SubjectsController {
     @Body() dto: CreateSubjectDto,
     @Req() req: { user: AuthenticatedUser },
   ) {
-    if (req.user.role !== 'host') {
+    if (req.user.role !== 'teacher') {
       throw new ForbiddenException(
-        'Создавать предметы может только хост (преподаватель)',
+        'Создавать предметы может только преподаватель',
       );
     }
 
@@ -40,5 +42,13 @@ export class SubjectsController {
   @Post('join')
   join(@Body() dto: JoinSubjectDto, @Req() req: { user: AuthenticatedUser }) {
     return this.subjectsService.join(dto, req.user.userId);
+  }
+
+  @Post(':subjectId/leave')
+  leave(
+    @Param('subjectId', ParseIntPipe) subjectId: number,
+    @Req() req: { user: AuthenticatedUser },
+  ) {
+    return this.subjectsService.leave(subjectId, req.user.userId);
   }
 }

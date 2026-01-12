@@ -84,9 +84,7 @@
 }
 
 .tasks-section {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 24px;
+  display: block;
 }
 
 .tasks-card,

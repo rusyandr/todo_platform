@@ -12,7 +12,7 @@ export class TasksService {
 
   findAll(): Promise<Task[]> {
     return this.tasksRepository.find({
-      relations: ['team'],
+      relations: ['team', 'team.subject', 'assignees', 'assignees.user'],
       order: { order: 'ASC', id: 'ASC' },
     });
   }
