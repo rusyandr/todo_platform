@@ -46,6 +46,14 @@ export interface CreateTaskPayload {
   dependencyIds?: number[];
 }
 
+export interface UpdateTaskPayload {
+  title?: string;
+  description?: string;
+  deadline?: string | null;
+  assigneeIds?: number[];
+  dependencyIds?: number[];
+}
+
 export function getTeamDetails(teamId: number) {
   return api.get<TeamDetailsResponse>(`/teams/${teamId}`);
 }
@@ -86,4 +94,12 @@ export function removeTeamMember(teamId: number, userId: number) {
 
 export function leaveTeam(teamId: number) {
   return api.post(`/teams/${teamId}/leave`);
+}
+
+export function updateTeamTask(teamId: number, taskId: number, payload: UpdateTaskPayload) {
+  return api.patch(`/teams/${teamId}/tasks/${taskId}/edit`, payload);
+}
+
+export function deleteTeamTask(teamId: number, taskId: number) {
+  return api.delete(`/teams/${teamId}/tasks/${taskId}`);
 }

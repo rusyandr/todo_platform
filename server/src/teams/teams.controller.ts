@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -22,6 +23,7 @@ import { JoinTeamDto } from './dto/join-team.dto';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
 @Controller('teams')
@@ -91,6 +93,25 @@ export class TeamsController {
       req.user.userId,
       dto,
     );
+  }
+
+  @Patch(':teamId/tasks/:taskId/edit')
+  updateTask(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body() dto: UpdateTaskDto,
+    @Req() req: { user: AuthenticatedUser },
+  ) {
+    return this.teamsService.updateTask(teamId, taskId, req.user.userId, dto);
+  }
+
+  @Delete(':teamId/tasks/:taskId')
+  deleteTask(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Req() req: { user: AuthenticatedUser },
+  ) {
+    return this.teamsService.deleteTask(teamId, taskId, req.user.userId);
   }
 
   @Post(':teamId/tasks/:taskId/comments')

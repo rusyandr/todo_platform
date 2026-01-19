@@ -15,6 +15,7 @@ import { CreateTeamDto } from './dto/create-team.dto';
 import { JoinTeamDto } from './dto/join-team.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
 import { SubjectParticipant } from '../entities/subject-participant.entity';
 import { Task } from '../entities/task.entity';
 import { TaskAssignee } from '../entities/task-assignee.entity';
@@ -437,6 +438,163 @@ export class TeamsService {
 
     await this.tasksRepository.save(task);
     return this.getTaskWithRelations(task.id);
+  }
+
+  async updateTask(
+    teamId: number,
+    taskId: number,
+    userId: number,
+    dto: UpdateTaskDto,
+  ) {
+    const membership = await this.getMembership(teamId, userId);
+    if (membership.role !== 'admin') {
+      throw new ForbiddenException(
+        'Редактировать задачи может только админ команды',
+      );
+    }
+
+    const task = await this.tasksRepository.findOne({
+      where: { id: taskId, team: { id: teamId } },
+      relations: ['team', 'team.subject'],
+    });
+
+    if (!task) {
+      throw new NotFoundException('Задача не найдена');
+    }
+
+    if (dto.title !== undefined) {
+      task.title = dto.title;
+    }
+    if (dto.description !== undefined) {
+      task.description = dto.description || null;
+    }
+
+    if (dto.deadline !== undefined) {
+      let deadline: Date | null = null;
+      if (dto.deadline !== null && dto.deadline && dto.deadline.trim() !== '') {
+        const deadlineDate = new Date(dto.deadline);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const deadlineDay = new Date(deadlineDate);
+        deadlineDay.setHours(0, 0, 0, 0);
+
+        if (deadlineDay < today) {
+          throw new BadRequestException(
+            'Дедлайн задачи не может быть раньше сегодняшнего дня',
+          );
+        }
+
+        const subject = await this.subjectsRepository.findOne({
+          where: { id: task.team.subject.id },
+        });
+
+        if (subject?.deadline) {
+          const subjectDeadline = new Date(subject.deadline);
+          subjectDeadline.setHours(23, 59, 0, 0);
+          if (deadlineDate > subjectDeadline) {
+            throw new BadRequestException(
+              'Дедлайн задачи не может быть позже дедлайна предмета',
+            );
+          }
+        }
+
+        deadline = deadlineDate;
+      }
+      task.deadline = deadline;
+    }
+
+    await this.tasksRepository.save(task);
+
+    if (dto.assigneeIds !== undefined) {
+      const existingAssignees = await this.taskAssigneesRepository.find({
+        where: { task: { id: taskId } },
+      });
+      await this.taskAssigneesRepository.remove(existingAssignees);
+
+      if (dto.assigneeIds.length > 0) {
+        const assignees = await this.teamMembersRepository.find({
+          where: {
+            team: { id: teamId },
+            user: { id: In(dto.assigneeIds) },
+          },
+          relations: ['user'],
+        });
+
+        if (assignees.length !== dto.assigneeIds.length) {
+          throw new NotFoundException(
+            'Некоторые ответственные не найдены в команде',
+          );
+        }
+
+        const assigneeEntities = assignees.map((member) =>
+          this.taskAssigneesRepository.create({
+            task,
+            user: member.user,
+          }),
+        );
+        await this.taskAssigneesRepository.save(assigneeEntities);
+      }
+    }
+
+    if (dto.dependencyIds !== undefined) {
+      const existingDependencies = await this.taskDependenciesRepository.find({
+        where: { task: { id: taskId } },
+      });
+      await this.taskDependenciesRepository.remove(existingDependencies);
+
+      if (dto.dependencyIds.length > 0) {
+        const dependencies = await this.tasksRepository.find({
+          where: { id: In(dto.dependencyIds), team: { id: teamId } },
+        });
+
+        if (dependencies.length !== dto.dependencyIds.length) {
+          throw new NotFoundException('Некоторые зависимости не найдены');
+        }
+
+        if (dependencies.some((dep) => dep.id === taskId)) {
+          throw new BadRequestException(
+            'Задача не может зависеть от самой себя',
+          );
+        }
+
+        const depEntities = dependencies.map((dependsOn) =>
+          this.taskDependenciesRepository.create({
+            task,
+            dependsOn,
+          }),
+        );
+        await this.taskDependenciesRepository.save(depEntities);
+      }
+    }
+
+    return this.getTaskWithRelations(task.id);
+  }
+
+  async deleteTask(teamId: number, taskId: number, userId: number) {
+    const membership = await this.getMembership(teamId, userId);
+    if (membership.role !== 'admin') {
+      throw new ForbiddenException(
+        'Удалять задачи может только админ команды',
+      );
+    }
+
+    const task = await this.tasksRepository.findOne({
+      where: { id: taskId, team: { id: teamId } },
+      relations: ['dependents'],
+    });
+
+    if (!task) {
+      throw new NotFoundException('Задача не найдена');
+    }
+
+    if (task.dependents && task.dependents.length > 0) {
+      throw new ConflictException(
+        'Нельзя удалить задачу, от которой зависят другие задачи. Сначала удалите зависимости.',
+      );
+    }
+
+    await this.tasksRepository.remove(task);
+    return { success: true };
   }
 
   private async generateUniqueJoinCode(length = 8): Promise<string> {

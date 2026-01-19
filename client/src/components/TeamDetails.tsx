@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import type { TeamDetailsResponse } from '../api/teams';
-import { addTaskComment, uploadTaskFile, removeTeamMember, leaveTeam } from '../api/teams';
+import { addTaskComment, uploadTaskFile, removeTeamMember, leaveTeam, updateTeamTask, deleteTeamTask } from '../api/teams';
 import { api } from '../api/axios';
 import type { AuthUser } from './AuthBar';
 import './TeamDetails.css';
@@ -33,6 +33,14 @@ export function TeamDetails({
   const [selectedTask, setSelectedTask] = useState<
     TeamDetailsResponse['tasks'][number] | null
   >(null);
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDeadline, setEditDeadline] = useState('');
+  const [editAssignees, setEditAssignees] = useState<number[]>([]);
+  const [editDependencies, setEditDependencies] = useState<number[]>([]);
+  const [showEditAssignees, setShowEditAssignees] = useState(false);
+  const [showEditDependencies, setShowEditDependencies] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
@@ -43,6 +51,7 @@ export function TeamDetails({
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUpdatingTask, setIsUpdatingTask] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('created');
@@ -190,6 +199,72 @@ export function TeamDetails({
   const openTaskDetails = (taskId: number) => {
     const t = team.tasks.find((x) => x.id === taskId) ?? null;
     setSelectedTask(t);
+    setIsEditingTask(false);
+  };
+
+  const startEditingTask = () => {
+    if (!selectedTask) return;
+    setEditTitle(selectedTask.title);
+    setEditDescription(selectedTask.description || '');
+    setEditDeadline(selectedTask.deadline ? new Date(selectedTask.deadline).toISOString().split('T')[0] : '');
+    setEditAssignees(selectedTask.assignees.map(a => a.id));
+    setEditDependencies(selectedTask.dependencies.map(d => d.id));
+    setIsEditingTask(true);
+    setError(null);
+  };
+
+  const cancelEditingTask = () => {
+    setIsEditingTask(false);
+    setError(null);
+  };
+
+  const handleUpdateTask = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedTask || !editTitle.trim()) {
+      setError('Название обязательно');
+      return;
+    }
+
+    setIsUpdatingTask(true);
+    setError(null);
+    try {
+      const deadlineValue: string | null = editDeadline 
+        ? new Date(editDeadline).toISOString() 
+        : null;
+      
+      await updateTeamTask(team.id, selectedTask.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim() || undefined,
+        deadline: deadlineValue,
+        assigneeIds: editAssignees,
+        dependencyIds: editDependencies,
+      });
+      setIsEditingTask(false);
+      if (onTeamUpdate) {
+        await onTeamUpdate();
+        const updated = team.tasks.find((t) => t.id === selectedTask.id);
+        if (updated) {
+          setSelectedTask(updated);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось обновить задачу, попробуй ещё раз');
+    } finally {
+      setIsUpdatingTask(false);
+    }
+  };
+
+  const toggleEditAssignee = (memberId: number) => {
+    setEditAssignees((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId],
+    );
+  };
+
+  const toggleEditDependency = (taskId: number) => {
+    setEditDependencies((prev) =>
+      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId],
+    );
   };
 
   useEffect(() => {
@@ -197,9 +272,16 @@ export function TeamDetails({
       const updated = team.tasks.find((t) => t.id === selectedTask.id);
       if (updated) {
         setSelectedTask(updated);
+        if (isEditingTask) {
+          setEditTitle(updated.title);
+          setEditDescription(updated.description || '');
+          setEditDeadline(updated.deadline ? new Date(updated.deadline).toISOString().split('T')[0] : '');
+          setEditAssignees(updated.assignees.map(a => a.id));
+          setEditDependencies(updated.dependencies.map(d => d.id));
+        }
       }
     }
-  }, [team.tasks]);
+  }, [team.tasks, isEditingTask]);
 
   const handleAddComment = async (taskId: number, text: string) => {
     if (!text.trim()) return;
@@ -234,6 +316,22 @@ export function TeamDetails({
     } catch (err) {
       console.error(err);
       setError('Не удалось загрузить файл');
+    }
+  };
+
+  const handleDeleteTask = async (taskId: number) => {
+    if (!team.isAdmin) return;
+    if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
+    try {
+      await deleteTeamTask(team.id, taskId);
+      setSelectedTask(null);
+      if (onTeamUpdate) {
+        await onTeamUpdate();
+      }
+    } catch (err: any) {
+      console.error(err);
+      const errorMessage = err?.response?.data?.message || 'Не удалось удалить задачу';
+      setError(errorMessage);
     }
   };
 
@@ -497,12 +595,182 @@ export function TeamDetails({
           {selectedTask && (
             <div className="app-modal" role="dialog" aria-modal="true">
               <div className="app-modal-card">
-                <h3>{selectedTask.title}</h3>
-                {selectedTask.description && <p>{selectedTask.description}</p>}
-                <p className="muted">Задача #{selectedTask.id}</p>
+                {!isEditingTask ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                      <div style={{ flex: 1 }}>
+                        <h3>{selectedTask.title}</h3>
+                        {selectedTask.description && <p>{selectedTask.description}</p>}
+                        <p className="muted">Задача #{selectedTask.id}</p>
+                        {selectedTask.deadline && (
+                          <p style={{ marginTop: '8px', color: '#475569' }}>
+                            Дедлайн: {new Date(selectedTask.deadline).toLocaleDateString('ru-RU')}
+                          </p>
+                        )}
+                        {selectedTask.assignees.length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <strong style={{ fontSize: '14px' }}>Ответственные: </strong>
+                            <span style={{ fontSize: '14px', color: '#475569' }}>
+                              {selectedTask.assignees.map(a => a.name).join(', ')}
+                            </span>
+                          </div>
+                        )}
+                        {selectedTask.dependencies.length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <strong style={{ fontSize: '14px' }}>Зависимости: </strong>
+                            <span style={{ fontSize: '14px', color: '#475569' }}>
+                              {selectedTask.dependencies.map(d => d.title).join(', ')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {team.isAdmin && (
+                        <div style={{ display: 'flex', gap: '8px', marginLeft: '16px' }}>
+                          <button
+                            type="button"
+                            className="ghost small"
+                            onClick={startEditingTask}
+                          >
+                            Редактировать
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost small"
+                            onClick={() => handleDeleteTask(selectedTask.id)}
+                            style={{ color: '#ef4444' }}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <form onSubmit={handleUpdateTask} style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <label>
+                        Название задачи
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          required
+                          style={{ width: '100%', padding: '8px', marginTop: '4px' }}
+                        />
+                      </label>
+                      <label>
+                        Описание
+                        <textarea
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          style={{ width: '100%', padding: '8px', marginTop: '4px', minHeight: '80px' }}
+                        />
+                      </label>
+                      <div className="task-input-wrapper" style={{ position: 'relative' }}>
+                        <div className="task-input">
+                          <input
+                            type="date"
+                            value={editDeadline}
+                            onChange={(e) => setEditDeadline(e.target.value)}
+                            placeholder="Дедлайн"
+                            style={{ flex: 1 }}
+                          />
+                          <div className="task-input__icons">
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Ответственные"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowEditAssignees((s) => !s);
+                                setShowEditDependencies(false);
+                              }}
+                            >
+                              👥
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Зависимости"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowEditDependencies((s) => !s);
+                                setShowEditAssignees(false);
+                              }}
+                            >
+                              🔗
+                            </button>
+                          </div>
+                        </div>
 
-                <section>
-                  <h4>Комментарии</h4>
+                        {showEditAssignees && (
+                          <div className="popover" style={{ right: 0, top: '48px' }} onMouseLeave={() => setShowEditAssignees(false)}>
+                            <strong>Ответственные</strong>
+                            <div className="list">
+                              {team.members.map((member) => (
+                                <label key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={editAssignees.includes(member.id)}
+                                    onChange={() => toggleEditAssignee(member.id)}
+                                  />
+                                  <span>{member.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {showEditDependencies && (
+                          <div className="popover" style={{ right: 44, top: '48px' }} onMouseLeave={() => setShowEditDependencies(false)}>
+                            <strong>Зависимости</strong>
+                            <div className="list">
+                              {team.tasks
+                                .filter((task) => task.id !== selectedTask.id)
+                                .map((task) => (
+                                  <label key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={editDependencies.includes(task.id)}
+                                      onChange={() => toggleEditDependency(task.id)}
+                                    />
+                                    <span>{task.title}</span>
+                                  </label>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {error && <p className="form-error">{error}</p>}
+
+                      <div className="app-modal-actions">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={cancelEditingTask}
+                          disabled={isUpdatingTask}
+                        >
+                          Отмена
+                        </button>
+                        <button
+                          type="submit"
+                          className="primary"
+                          disabled={isUpdatingTask}
+                        >
+                          {isUpdatingTask ? 'Сохранение...' : 'Сохранить'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+
+                {!isEditingTask && (
+                  <>
+                    <section>
+                      <h4>Комментарии</h4>
                   <ul className="comments-list">
                     {(selectedTask.comments || []).map((c) => (
                       <li key={c.id}>
@@ -584,6 +852,8 @@ export function TeamDetails({
                     />
                   </label>
                 </section>
+                  </>
+                )}
               </div>
             </div>
           )}
